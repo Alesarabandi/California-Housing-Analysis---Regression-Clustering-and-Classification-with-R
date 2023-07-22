@@ -1,0 +1,243 @@
+---
+title: "Mini Project of SL"
+author: "Ali Sarabandi"
+date: "2023-06-11"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(datarium)
+library(ggplot2)
+library(ggpubr)
+library(pastecs)
+library(dplyr)
+library(cluster)    
+library(factoextra)
+library(mlbench)
+library(lmtest)
+
+```
+
+![](https://i.pinimg.com/originals/73/05/52/730552bcc005b7ab929a3ac2c3920e11.png)
+
+#### ***This is the dataset used in the second chapter of Aurélien Géron's recent book 'Hands-On Machine learning with Scikit-Learn and TensorFlow'. It serves as an excellent introduction to implementing machine learning algorithms because it requires rudimentary data cleaning, has an easily understandable list of variables and sits at an optimal size between being to toyish and too cumbersome.***
+
+#### ***The data contains information from the 1990 California census. So although it may not help you with predicting current housing prices, it does provide an accessible introductory dataset for teaching people about the basics of machine learning.***
+
+#### *The columns are as follows, their names are pretty self explanitory: longitude, latitude, housing_median_age, total_rooms, total_bedrooms, population, households, median_income, median_house_value, ocean_proximity*
+
+\
+
+```{r, warning=FALSE}
+# Load the data
+calihousing <- read_csv("housing.csv")
+housing <- as.data.frame(calihousing)
+
+housing1 <- housing[, -which(names(housing) == "ocean_proximity" )]
+housing2 <- housing1[, -which(names(housing) == "total_bedrooms" )]
+
+dim(housing2)
+head(housing2)
+
+# the first step before to build a model
+cor(housing2)
+str(housing2)
+summary(housing2)
+
+# descriptive statistics
+des <- stat.desc(housing2)
+round(des, 3)
+```
+
+# Now lets do a Regression model
+
+```{r, warning=FALSE}
+
+# try to understand the relationship of features with house value
+
+gg1=ggplot(housing2, aes(median_income, median_house_value) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ x) +
+  ggtitle("Simple linear regression model") +
+  xlab("Median income") + ylab("Average Price of the houses")
+
+gg2=ggplot(housing2, aes(housing_median_age, median_house_value) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ x)+
+  ggtitle("Simple linear regression model") +
+  xlab("Average age of the houses") + ylab("Average Price of the houses")
+
+gg3=ggplot(housing2, aes(total_rooms, median_house_value) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ x)+
+  ggtitle("Simple linear regression model") +
+  xlab("Number of bedrooms") + ylab("Average Price of the houses")
+
+figure <- ggarrange(gg1,gg2,gg3,
+                    labels = c("A", "B", "C"),
+                    ncol = 2, nrow = 2)
+
+figure # the relationships seem quite linear
+
+# Build the MLR model
+mod <- lm(median_house_value ~ housing_median_age + median_income + total_rooms , data = housing2 )
+# Check the distribution of residuals
+hist(mod$residuals) # Histogram of residuals
+qqnorm(mod$residuals) # Q-Q plot of residuals# Shapiro-Wilk test for normality of residuals
+# Build the Log transformation model to fix the normality of residual
+mod_log <- lm(log(median_house_value) ~ housing_median_age + median_income + total_rooms, data = housing2)
+
+# Check the distribution of residuals again
+hist(mod_log$residuals)  # Histogram of residuals
+qqnorm(mod_log$residuals)  # Q-Q plot of residuals
+
+
+# Diagnostic plots for heteroscedasticity
+# Residual vs. Fitted Values plot
+plot(mod, which = 1)
+
+# Scale-Location plot (Square root of standardized residuals vs. Fitted Values)
+plot(mod, which = 3)
+
+# Residuals vs. Leverage plot
+plot(mod, which = 5)
+
+# Apply weighted least squares regression to fic heteroscedasticity
+weights <- 1/sqrt(abs(mod$residuals))
+mod_wls <- lm(median_house_value ~ housing_median_age + median_income + total_rooms, data = housing2, weights = weights)
+# test if it works or not
+lmtest::bptest(mod_wls)
+
+
+
+# Build the Log model
+mod2 <- glm(median_house_value ~ ocean_proximity, data = housing)
+# Summarize the model
+summary(mod)
+summary(mod2)
+summary(mod_wls)
+
+```
+
+#### *The symbol \*\*\* on the MLR model summary denotes a p-value less than 0.001, indicating a highly significant coefficient. The F-statistic in our situation is quite big, and the corresponding p-value is less than 2e-16 (nearly zero), suggesting that the model as a whole is highly statistically significant.Also there was a problem of heteroscedasticity but we used  weighted least squares regression and based on the studentized Breusch-Pagan test, the p-value is 0.1737. The null hypothesis of the test is homoscedasticity (no heteroscedasticity), and the alternative hypothesis is heteroscedasticity.With a p-value of 0.1737, which is greater than the significance level of 0.05, we do not have sufficient evidence to reject the null hypothesis. This suggests that there is no significant evidence of heteroscedasticity in the model with weighted least squares regression (mod_wls).With a p-value of 0.1737, which is greater than the significance level of 0.05, we do not have sufficient evidence to reject the null hypothesis. This suggests that there is no significant evidence of heteroscedasticity in the model with weighted least squares regression (mod_wls).*
+
+#### *Overall, the linear regression model reveals that the median home value is statistically related to housing median age, median income, and number rooms. The positive coefficients suggest that when these predictor factors grow, so does the median house value.*
+
+#### *In addition, the logistic regression model indicates that the ocean_proximity variable is a statistically significant predictor of the homes price, which really makes sense given that the neighborhood directly influences the price of houses. The projected change in price for each category, keeping other factors constant, may be deduced from the coefficients. As an illustration, being in the "ISLAND," "NEAR BAY," or "NEAR OCEAN" categories raises the log of the house's price, however being in the "INLAND" category lowers it.*
+
+#### 
+
+\
+
+\
+
+# Now lets do clustering
+
+![](https://t3.ftcdn.net/jpg/04/75/12/28/360_F_475122871_PrkiFc3LukHaE0HWUW2V6pNBWrmczqJU.jpg)
+
+#### *We grouped the data points from the California housing dataset in this clustering study based on the variables "total_rooms" and "households." These variables are two aspects of the housing data.*
+
+#### *The goal of clustering was to group together comparable data points based on their values in these two variables. We selected clusters or groupings of data points with comparable values in terms of the total number of rooms and households using hierarchical clustering.*
+
+#### *The clustering algorithm examines the data points for patterns and similarities and assigns them to distinct groupings. The clusters that form indicate different segments or groupings within the dataset. Each cluster comprises data points that are more similar in terms of "total_rooms" and "households" values than data points in other clusters.*
+
+#### *The clustering results graphic shows how the data points are distributed in the feature space defined by "total_rooms" and "households." Each cluster is allocated a different hue, making it simpler to detect the cluster boundaries and patterns.*
+
+#### *We may learn about the different types of housing units in the dataset by evaluating the clustering findings, which are based on the total number of rooms and households. Clustering aids in the discovery of underlying patterns and structures in data, allowing for additional analysis and decision-making.*
+
+\
+
+```{r, warning=FALSE}
+
+# Set the random seed for reproducibility
+set.seed(123)
+
+# Subset the dataset for clustering
+cluster_data <- housing[, c("total_rooms", "households")]
+
+# Standardize the numerical variables
+scaled_data <- scale(cluster_data[, c("total_rooms", "households")])
+
+# Calculate Euclidean distance and perform hierarchical clustering
+dd <- dist(scaled_data, method = "euclidean")
+clusters <- hclust(dd, method = "complete")
+
+# Determine the optimal number of clusters using the elbow method
+wss <- numeric(10)
+for (i in 1:10) {
+  kmeans_model <- kmeans(scaled_data, centers = i)
+  wss[i] <- kmeans_model$tot.withinss
+}
+
+# Plot the elbow curve
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE, xlab = "Number of Clusters",
+     ylab = "Within-Cluster Sum of Squares", ylim = c(min(wss, na.rm = TRUE), max(wss, na.rm = TRUE)))
+
+# Determine the optimal number of clusters visually
+k <- 3  # Set the desired number of clusters
+
+# Perform clustering with the optimal number of clusters
+cut <- cutree(clusters, k)
+
+# Print the count of each ocean proximity category within each cluster
+table(cut, housing$ocean_proximity)
+
+# Visualize the real categories of the data points
+p = ggplot(cluster_data, aes(total_rooms, households))
+p + geom_point(aes(colour = factor(housing$ocean_proximity)), size = 4) + ggtitle("Real Categories")
+
+# Visualize the clustering results
+p = ggplot(cluster_data, aes(total_rooms, households))
+p + geom_point(aes(colour = factor(cut)), size = 4) + ggtitle("Clustering Results")
+
+# Visualize the clustering results with a legend
+fviz_cluster(list(data = cluster_data, cluster = cut), stand = FALSE, addlegend = "bottom")
+
+
+```
+
+#### *According to the clustering result, the data points have been divided into three groups based on the variables "total_rooms" and "households." Each cluster reflects a unique mix of total rooms and families. Clustering aids in the identification of patterns or similarities among data points and gives insights into the various segments or groupings found in the California housing dataset.*
+
+# And the last but not the least, Supervised classification:
+
+![](https://blogs.nvidia.com/wp-content/uploads/2018/07/Supervised_machine_learning_in_a_nutshell.svg_.png)
+
+```{r}
+# Remove missing values
+housing <- housing[complete.cases(housing), ]
+
+# Supervised Classification - Predicting Housing Category
+# Convert the housing category to a factor variable
+housing$housing_median_age_category <- as.factor(ifelse(housing$housing_median_age > median(housing$housing_median_age), "old", "new"))
+
+# Split the data into training and testing sets
+set.seed(123)
+train_indices <- sample(1:nrow(housing), 0.8 * nrow(housing))
+train_data <- housing[train_indices, ]
+test_data <- housing[-train_indices, ]
+
+# Train a classification model (e.g., random forest)
+library(randomForest)
+model <- randomForest(housing_median_age_category ~ ., data = train_data)
+
+# Make predictions on the test data
+predictions <- predict(model, newdata = test_data)
+
+# Convert factor levels to match between predicted and actual values
+test_data$housing_median_age_category <- factor(test_data$housing_median_age_category,
+                                             levels = levels(train_data$housing_median_age_category))
+
+# Evaluate the model and generate confusion matrix
+confusionMatrix(predictions, test_data$housing_median_age_category)
+
+```
+
+#### ***The confusion matrix provides information about the performance of the classification model. In this case, the model achieved perfect accuracy with an accuracy value of 1. The sensitivity and specificity values are also 1, indicating that the model correctly classified all instances of both "new" and "old" categories.The prevalence refers to the proportion of the "new" category in the dataset, which is 0.5082. Overall, the model shows excellent performance in classifying housing median age categories based on the available features in the dataset.** The dataset is randomly split into training and testing sets using a specified seed value. 80% of the data is used for training the classification model, and the remaining 20% is used for testing. **The threshold for categorizing a house as "new" or "old" is determined based on the median value of the "housing_median_age" variable. If a house's median age is greater than the median value of the entire dataset, it is classified as "old". Otherwise, it is classified as "new".***
