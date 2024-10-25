@@ -1,3 +1,5 @@
+vim: syntax=r
+
 ---
 title: "Mini Project of SL"
 author: "Ali Sarabandi"
